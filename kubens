@@ -57,6 +57,22 @@ current_context() {
   $KUBECTL config current-context
 }
 
+has_permission() {
+  if [[ "$($KUBECTL get namespace ${1} 2>&1)" == *"Forbidden"* ]]; then
+    return 1
+  else
+    return 0
+  fi
+}
+
+namespace_exist() {
+  if [[ "$($KUBECTL get namespace ${1} 2>&1)" == *"NotFound"* ]]; then
+    return 1
+  else
+    return 0
+  fi
+}
+
 get_namespaces() {
   $KUBECTL get namespaces -o=jsonpath='{range .items[*].metadata.name}{@}{"\n"}{end}'
 }
@@ -119,15 +135,19 @@ set_namespace() {
   local ctx prev
   ctx="$(current_context)" || exit_err "error getting current context"
   prev="$(current_namespace)" || exit_error "error getting current namespace"
+  if has_permission $1; then
+    if namespace_exist $1; then
+      switch_namespace "${ctx}" "${1}"
 
-  if grep -q ^"${1}"\$ <(get_namespaces); then
-    switch_namespace "${ctx}" "${1}"
-
-    if [[ "${prev}" != "${1}" ]]; then
-      save_namespace "${ctx}" "${prev}"
+      if [[ "${prev}" != "${1}" ]]; then
+        save_namespace "${ctx}" "${prev}"
+      fi
+    else
+      echo "error: no namespace exists with name \"${1}\".">&2
+      exit 1
     fi
   else
-    echo "error: no namespace exists with name \"${1}\".">&2
+    echo "forbidden: cannot get namespace with name \"${1}\".">&2
     exit 1
   fi
 }
